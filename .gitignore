@@ -1,4 +1,5 @@
 build/
 eula.hpp
+info.hpp
 NoahhInstaller.exe.manifest
 .vscode/
