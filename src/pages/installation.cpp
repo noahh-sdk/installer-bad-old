@@ -36,11 +36,19 @@ protected:
     }
 
     void onBrowse(wxCommandEvent&) {
+        #if _WIN32
         wxFileDialog ofd(
             this, "Select Geometry Dash", "", "",
             "Executable files (*.exe)|*.exe",
             wxFD_OPEN | wxFD_FILE_MUST_EXIST 
         );
+        #else
+        wxFileDialog ofd(
+            this, "Select Geometry Dash", "", "",
+            "Applications (*.app)|*.app",
+            wxFD_OPEN | wxFD_FILE_MUST_EXIST 
+        );
+        #endif
         if (ofd.ShowModal() == wxID_CANCEL) return;
         m_pathInput->SetValue(ofd.GetPath());
     }
@@ -51,9 +59,15 @@ protected:
 
     void updateContinue() {
         auto path = m_pathInput->GetValue().ToStdWstring();
+        #if _WIN32
         m_canContinue =
             ghc::filesystem::exists(path) &&
             ghc::filesystem::is_regular_file(path);
+        #else
+        m_canContinue =
+            ghc::filesystem::exists(path) &&
+            ghc::filesystem::is_directory(path);
+        #endif
         m_frame->updateControls();
     }
 
@@ -246,8 +260,6 @@ REGISTER_PAGE(Install);
 
 class PageInstallFinished : public Page {
 protected:
-    wxCheckBox* m_box;
-
     void enter() override {
         auto res = Manager::get()->saveData();
         if (!res) {
@@ -260,20 +272,12 @@ protected:
         }
     }
 
-    void leave() override {
-        if (m_box->IsChecked()) {
-            Manager::get()->launch(GET_EARLIER_PAGE(InstallSelectGD)->getPath());
-        }
-    }
-
 public:
     PageInstallFinished(MainFrame* frame) : Page(frame) {
         this->addText(
             "Installing finished! "
             "You can now close this installer && start up Geometry Dash :)"
         );
-        m_box = this->addToggle<PageInstallFinished>("Launch Geometry Dash", nullptr);
-        m_box->SetValue(true);
         this->addButton("Support Discord Server", &MainFrame::onDiscord, m_frame);
 
         m_canContinue = true;

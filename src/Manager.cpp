@@ -7,7 +7,6 @@
 #include "include/json.hpp"
 #include <thread>
 #include <chrono>
-#include <algorithm>
 
 #define INSTALL_DATA_JSON "installer.json"
 
@@ -19,7 +18,6 @@
 #define REGKEY_NOAHH "Software\\NoahhSDK"
 #define REGSUB_INSTALLATIONS "Installations"
 #define REGVAL_SDKDIR "SDKDirectory"
-#define REGVAL_DEFINST "Default"
 #define REGVAL_INSTPATH "Path"
 #define REGVAL_INSTEXE "Exe"
 #define REGVAL_INSTVERSION "Version"
@@ -33,12 +31,12 @@
 #elif defined(__APPLE__)
 
 #include <CoreServices/CoreServices.h>
-
+#include "objc.h"
 #define PLATFORM_ASSET_IDENTIFIER "mac"
 #define PLATFORM_NAME "MacOS"
 
 #else
-#error "Define PLATFORM_ASSET_IDENTIFIER & PLATFORM_NAME"
+#warning "Define PLATFORM_ASSET_IDENTIFIER & PLATFORM_NAME"
 #endif
 
 wxDEFINE_EVENT(CALL_ON_MAIN, CallOnMainEvent);
@@ -50,24 +48,6 @@ Manager* Manager::get() {
 
 void Manager::onSyncThreadCall(CallOnMainEvent& e) {
     e.invoke();
-}
-
-void Manager::addInstallation(Installation const& inst) {
-    auto old = std::find(m_installations.begin(), m_installations.end(), inst);
-    if (old != m_installations.end()) {
-        *old = inst;
-    } else {
-        m_installations.push_back(inst);
-    }
-}
-
-
-InstallerMode Manager::getInstallerMode() const {
-    return m_mode;
-}
-
-ghc::filesystem::path const& Manager::getLoaderUpdatePath() const {
-    return m_loaderUpdatePath;
 }
 
 
@@ -92,7 +72,9 @@ Result<> Manager::finishSDKInstallation() {
     return Ok();
 
     #else
-    #error "Implement Manager::finishSDKInstallation"
+
+    #warning "Implement Manager::finishSDKInstallation"
+
     #endif
 }
 
@@ -366,7 +348,7 @@ ghc::filesystem::path Manager::getDefaultSDKDirectory() const {
     return ghc::filesystem::path(path) / "NoahhSDK";
 
     #else
-    #error "Implement Manager::getDefaultNoahhDirectory"
+    #warning "Implement Manager::getDefaultNoahhDirectory"
     #endif
 }
 
@@ -378,12 +360,8 @@ void Manager::setSDKDirectory(ghc::filesystem::path const& path) {
     m_sdkDirectory = path;
 }
 
-std::vector<Installation> const& Manager::getInstallations() const {
+std::set<Installation> const& Manager::getInstallations() const {
     return m_installations;
-}
-
-size_t Manager::getDefaultInstallation() const {
-    return m_defaultInstallation;
 }
 
 bool Manager::isFirstTime() const {
@@ -434,18 +412,13 @@ Result<> Manager::loadData() {
                     inst.m_version = value;
                 }
                 
-                this->addInstallation(inst);
-            }
-            if (sub.HasValue(REGVAL_DEFINST)) {
-                long long defInst;
-                sub.QueryValue64(REGVAL_DEFINST, &defInst);
-                m_defaultInstallation = defInst;
+                m_installations.insert(inst);
             }
         }
     }
 
     #else
-    #error "Implement Manager::loadData"
+    #warning "Implement Manager::loadData"
     #endif
 
     return Ok();
@@ -470,9 +443,6 @@ Result<> Manager::saveData() {
     if (!subKey.Create()) {
         UHHH_WELP("Unable to create " REGKEY_NOAHH "\\" REGSUB_INSTALLATIONS);
     }
-    if (m_installations.size()) {
-        subKey.SetValue64(REGVAL_DEFINST, m_defaultInstallation);
-    }
     size_t ix = 0;
     for (auto& inst : m_installations) {
         auto keyName = REGKEY_NOAHH "\\" REGSUB_INSTALLATIONS + 
@@ -495,7 +465,7 @@ Result<> Manager::saveData() {
     }
 
     #else
-    #error "Implement Manager::saveData"
+    #warning "Implement Manager::saveData"
     #endif
 
     return Ok();
@@ -508,7 +478,7 @@ Result<> Manager::deleteData() {
         return Err("Unable to delete registry key");
     }
     #else
-    #error "Implement Manager::deleteData"
+    #warning "Implement Manager::deleteData"
     #endif
 
     return Ok();
@@ -554,7 +524,7 @@ Result<> Manager::addCLIToPath() {
     );
     return Ok();
     #else
-    #error "Implement Manager::addCLIToPath"
+    #warning "Implement Manager::addCLIToPath"
     #endif
 }
 
@@ -647,7 +617,7 @@ Result<> Manager::installSDK(
     return Ok();
 
     #else
-    #error "Implement Manager::installSDK"
+    #warning "Implement Manager::installSDK"
     #endif
 }
 
@@ -686,7 +656,7 @@ Result<> Manager::uninstallSDK() {
         nullptr
     );
     #else
-    #error "Implement Manager::uninstallSDK"
+    #warning "Implement Manager::uninstallSDK"
     #endif
     return Ok();
 }
@@ -709,19 +679,13 @@ Result<Installation> Manager::installLoaderFor(
         return Err("Loader unzip error: " + ures.error());
     }
 
-    wxFile appid((inst.m_path / "steam_appid.txt").wstring(), wxFile::write);
-    appid.Write("322170");
-
     #elif defined(__APPLE__)
-    #error "Do you just unzip the Noahh dylib to the GD folder on mac? or where do you put it"
+    #warning "Do you just unzip the Noahh dylib to the GD folder on mac? or where do you put it"
     #else
     static_assert(false, "Implement installation proper for this platform");
     #endif
 
-    if (!m_installations.size()) {
-        m_defaultInstallation = 0;
-    }
-    this->addInstallation(inst);
+    m_installations.insert(inst);
 
     return Ok(inst);
 }
@@ -770,7 +734,7 @@ Result<> Manager::uninstallFrom(Installation const& inst) {
     #elif defined(__APPLE__)
     std::cout << "balls 2\n";
     #else
-    #error "Implement MainFrame::UninstallNoahh"
+    #warning "Implement MainFrame::UninstallNoahh"
     #endif
 }
 
@@ -790,7 +754,7 @@ Result<> Manager::deleteSaveDataFrom(Installation const& inst) {
     #elif defined(__APPLE__)
     std::cout << "cocks\n";
     #else
-    #error "Implement MainFrame::DeleteSaveData"
+    #warning "Implement MainFrame::DeleteSaveData"
     #endif
 }
 
@@ -844,10 +808,10 @@ std::optional<ghc::filesystem::path> Manager::findDefaultGDPath() const {
 
     #elif defined(__APPLE__)
 
-    return figureOutGdPath();
+    return FigureOutGDPathMac();
 
     #else
-    #error "Implement Manager::FindDefaultGDPath!"
+    #warning "Implement Manager::FindDefaultGDPath!"
     // If there's no automatic path figure-outing here, just return ""
     #endif
 }
@@ -885,22 +849,9 @@ int Manager::doesDirectoryContainOtherMods(
     return flags; // there are no other conflicts
 
     #else
-    #error "Implement MainFrame::DetectOtherModLoaders!"
+    #warning "Implement MainFrame::DetectOtherModLoaders!"
     // Return a list of known mods if found (if possible, update
     // the page to say "please uninstall other loaders first" if 
     // this platform doesn't have any way of detecting existing ones)
     #endif
-}
-
-void Manager::launch(ghc::filesystem::path const& path) {
-    wxExecuteEnv env;
-    env.cwd = path.parent_path().wstring();
-    if (!wxExecute(path.wstring(), 0, nullptr, &env)) {
-        wxMessageBox(
-            "Unable to automatically restart GD, please "
-            "open the game yourself.",
-            "Error Starting GD",
-            wxICON_ERROR
-        );
-    }
 }
