@@ -1,0 +1,3 @@
+#pragma once
+
+#define INSTALLER_VERSION "v@PROJECT_VERSION@"
