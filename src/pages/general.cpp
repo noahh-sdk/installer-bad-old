@@ -1,6 +1,7 @@
 #include "Page.hpp"
 #include "../MainFrame.hpp"
 #include "../include/eula.hpp"
+#include "../Manager.hpp"
 
 class PageNotFound : public Page {
 public:
@@ -15,22 +16,52 @@ REGISTER_PAGE(NotFound);
 class PageStart : public Page {
 protected:
     void onSelect(wxCommandEvent& e) override {
-        switch (e.GetId()) {
-            case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
-            case 1: m_frame->selectPageStructure(InstallType::InstallDevTools); break;
-            case 2: m_frame->selectPageStructure(InstallType::Uninstall); break;
-            default: break;
+        if (Manager::get()->isSDKInstalled()) {
+            switch (e.GetId()) {
+                case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
+                case 1: m_frame->selectPageStructure(InstallType::Uninstall); break;
+                default: break;
+            }
+        } else {
+            switch (e.GetId()) {
+                case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
+                case 1: m_frame->selectPageStructure(InstallType::InstallDevTools); break;
+                case 2: m_frame->selectPageStructure(InstallType::Uninstall); break;
+                default: break;
+            }
         }
+    }
+
+    void onViewInfo(wxCommandEvent&) {
+        wxString info = "Installations\n\n";
+        if (Manager::get()->isSDKInstalled()) {
+            info += "SDK is installed, querying version\n\n";
+        } else {
+            info += "SDK has not been installed\n\n";
+        }
+        for (auto& inst : Manager::get()->getInstallations()) {
+            info += "Noahh loader " + inst.m_version + "\n";
+            info += inst.m_path.wstring() + "\n\n";
+        }
+        wxMessageBox(info, "Installations");
     }
 
 public:
     PageStart(MainFrame* frame) : Page(frame) {
         this->addText("Welcome to the Noahh installer!");
-        this->addSelect({
-            "Install Noahh on a GDPS (Private Server)",
-            "Install the Noahh developer tools",
-            "Uninstall Noahh"
-        });
+        if (Manager::get()->isSDKInstalled()) {
+            this->addSelect({
+                "Install Noahh on a GDPS (Private Server)",
+                "Uninstall Noahh"
+            });
+        } else {
+            this->addSelect({
+                "Install Noahh on a GDPS (Private Server)",
+                "Install the Noahh developer tools",
+                "Uninstall Noahh"
+            });
+        }
+        this->addButton("Installations", &PageStart::onViewInfo);
         frame->selectPageStructure(InstallType::InstallOnGDPS);
         m_canContinue = true;
     }
