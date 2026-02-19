@@ -17,8 +17,8 @@ protected:
     void onSelect(wxCommandEvent& e) override {
         switch (e.GetId()) {
             case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
-            // case 1: m_frame->selectPageStructure(InstallType::InstallDevTools); break;
-            case 1: m_frame->selectPageStructure(InstallType::Uninstall); break;
+            case 1: m_frame->selectPageStructure(InstallType::InstallDevTools); break;
+            case 2: m_frame->selectPageStructure(InstallType::Uninstall); break;
             default: break;
         }
     }
@@ -28,7 +28,7 @@ public:
         this->addText("Welcome to the Noahh installer!");
         this->addSelect({
             "Install Noahh on a GDPS (Private Server)",
-            // "Install the Noahh developer tools",
+            "Install the Noahh developer tools",
             "Uninstall Noahh"
         });
         frame->selectPageStructure(InstallType::InstallOnGDPS);
