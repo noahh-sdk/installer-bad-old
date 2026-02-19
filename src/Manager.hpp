@@ -21,7 +21,7 @@ struct Installation {
     ghc::filesystem::path m_path;
     /**
      * Binary name; stored to delete the save data 
-     * dir under %localappdata%/${m_exe}/Noahh on 
+     * dir under %localappdata%/${m_exe}/noahh on 
      * Windows.
      */
     wxString m_exe;
@@ -48,9 +48,11 @@ using DownloadFinishFunc = std::function<void(wxWebResponse const&)>;
 
 class Manager : public wxEvtHandler {
 protected:
-    ghc::filesystem::path m_noahhDirectory;
+    ghc::filesystem::path m_sdkDirectory;
+    ghc::filesystem::path m_dataDirectory;
     std::set<Installation> m_installations;
-    bool m_noahhDirectorySet = false;
+    bool m_dataLoaded = false;
+    bool m_sdkInstalled = false;
 
     void webRequest(
         std::string const& url,
@@ -59,27 +61,48 @@ protected:
         DownloadProgressFunc progressFunc,
         DownloadFinishFunc finishFunc
     );
+    Result<> unzipTo(
+        ghc::filesystem::path const& zip,
+        ghc::filesystem::path const& to
+    );
 
 public:
     static Manager* get();
 
     bool isFirstTime() const;
-    ghc::filesystem::path const& getNoahhDirectory() const;
+    ghc::filesystem::path const& getSDKDirectory() const;
+    void setSDKDirectory(ghc::filesystem::path const&);
+    ghc::filesystem::path getDefaultSDKDirectory() const;
+    ghc::filesystem::path getDefaultDataDirectory() const;
+    ghc::filesystem::path const& getDataDirectory() const;
     std::set<Installation> const& getInstallations() const;
 
     Result<> loadData();
     Result<> saveData();
     Result<> deleteData();
 
+    bool isSDKInstalled() const;
+    Result<> uninstallSDK();
+
     void downloadLoader(
         DownloadErrorFunc errorFunc,
         DownloadProgressFunc progressFunc,
         DownloadFinishFunc finishFunc
     );
+    void downloadAPI(
+        DownloadErrorFunc errorFunc,
+        DownloadProgressFunc progressFunc,
+        DownloadFinishFunc finishFunc
+    );
 
-    Result<> installFor(
+    Result<Installation> installLoaderFor(
         ghc::filesystem::path const& gdExePath,
         ghc::filesystem::path const& zipLocation
+    );
+    Result<> installAPIFor(
+        Installation const& installation,
+        ghc::filesystem::path const& zipLocation,
+        wxString const& filename
     );
     Result<> uninstallFrom(Installation const& installation);
     Result<> deleteSaveDataFrom(Installation const& installation);
