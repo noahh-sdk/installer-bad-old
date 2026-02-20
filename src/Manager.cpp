@@ -7,6 +7,7 @@
 #include "include/json.hpp"
 #include <thread>
 #include <chrono>
+#include <algorithm>
 
 #define INSTALL_DATA_JSON "installer.json"
 
@@ -18,6 +19,7 @@
 #define REGKEY_NOAHH "Software\\NoahhSDK"
 #define REGSUB_INSTALLATIONS "Installations"
 #define REGVAL_SDKDIR "SDKDirectory"
+#define REGVAL_DEFINST "Default"
 #define REGVAL_INSTPATH "Path"
 #define REGVAL_INSTEXE "Exe"
 #define REGVAL_INSTVERSION "Version"
@@ -30,6 +32,7 @@
 
 #elif defined(__APPLE__)
 
+#include <dlfcn.h>
 #include <CoreServices/CoreServices.h>
 #include "objc.h"
 #define PLATFORM_ASSET_IDENTIFIER "mac"
@@ -48,6 +51,24 @@ Manager* Manager::get() {
 
 void Manager::onSyncThreadCall(CallOnMainEvent& e) {
     e.invoke();
+}
+
+void Manager::addInstallation(Installation const& inst) {
+    auto old = std::find(m_installations.begin(), m_installations.end(), inst);
+    if (old != m_installations.end()) {
+        *old = inst;
+    } else {
+        m_installations.push_back(inst);
+    }
+}
+
+
+InstallerMode Manager::getInstallerMode() const {
+    return m_mode;
+}
+
+ghc::filesystem::path const& Manager::getLoaderUpdatePath() const {
+    return m_loaderUpdatePath;
 }
 
 
@@ -73,7 +94,7 @@ Result<> Manager::finishSDKInstallation() {
 
     #else
 
-    #warning "Implement Manager::finishSDKInstallation"
+    // nothing we rly need to do
 
     #endif
 }
@@ -338,17 +359,9 @@ ghc::filesystem::path Manager::getDefaultSDKDirectory() const {
     
     #elif defined(__APPLE__)
 
-    FSRef ref;
-    OSType folderType = kApplicationSupportFolderType;
-    char path[PATH_MAX];
-
-    FSFindFolder(kUserDomain, folderType, kCreateFolder, &ref);
-    FSRefMakePath(&ref, (UInt8*)&path, PATH_MAX);
-
-    return ghc::filesystem::path(path) / "NoahhSDK";
-
-    #else
-    #warning "Implement Manager::getDefaultNoahhDirectory"
+    return "/Users/Shared/Noahh/"; 
+    // it's literally hardcoded
+    // there is no programatic way to get /Users/Shared
     #endif
 }
 
@@ -360,8 +373,12 @@ void Manager::setSDKDirectory(ghc::filesystem::path const& path) {
     m_sdkDirectory = path;
 }
 
-std::set<Installation> const& Manager::getInstallations() const {
+std::vector<Installation> const& Manager::getInstallations() const {
     return m_installations;
+}
+
+size_t Manager::getDefaultInstallation() const {
+    return m_defaultInstallation;
 }
 
 bool Manager::isFirstTime() const {
@@ -412,13 +429,47 @@ Result<> Manager::loadData() {
                     inst.m_version = value;
                 }
                 
-                m_installations.insert(inst);
+                this->addInstallation(inst);
+            }
+            if (sub.HasValue(REGVAL_DEFINST)) {
+                long long defInst;
+                sub.QueryValue64(REGVAL_DEFINST, &defInst);
+                m_defaultInstallation = defInst;
             }
         }
     }
 
-    #else
-    #warning "Implement Manager::loadData"
+    #elif defined(__APPLE__)
+    char* suite = getenv("NOAHH_SUITE");
+    m_dataLoaded = true;
+    if (suite != NULL) {
+        m_sdkDirectory = suite;
+    }
+
+    if (!wxFile::Exists("/Users/Shared/Noahh/config.json"))
+        return Ok();
+
+    wxFile file;
+    file.Open("/Users/Shared/Noahh/config.json");
+
+
+    wxString x;
+    file.ReadAll(&x);
+
+    auto json = nlohmann::json::parse(std::string(x));
+
+    for (auto install : json["installations"]) {
+        Installation inst;
+        inst.m_path = std::string(install["path"]);
+        inst.m_exe = std::string(install["executable"]);
+        inst.m_version = std::string(install["version"]);
+        this->addInstallation(inst);
+    }
+
+    m_defaultInstallation = json["default-installation"];
+    m_defaultInstallation = json["has-sdk"];
+
+    file.Close();
     #endif
 
     return Ok();
@@ -443,6 +494,9 @@ Result<> Manager::saveData() {
     if (!subKey.Create()) {
         UHHH_WELP("Unable to create " REGKEY_NOAHH "\\" REGSUB_INSTALLATIONS);
     }
+    if (m_installations.size()) {
+        subKey.SetValue64(REGVAL_DEFINST, m_defaultInstallation);
+    }
     size_t ix = 0;
     for (auto& inst : m_installations) {
         auto keyName = REGKEY_NOAHH "\\" REGSUB_INSTALLATIONS + 
@@ -463,9 +517,28 @@ Result<> Manager::saveData() {
         }
         ix++;
     }
+    #elif defined(__APPLE__)
+        if (!ghc::filesystem::exists("/Users/Shared/Noahh/"))
+            ghc::filesystem::create_directories("/Users/Shared/Noahh/");
 
-    #else
-    #warning "Implement Manager::saveData"
+        std::ofstream ofs("/Users/Shared/Noahh/config.json");
+
+        nlohmann::json config;
+        config["has-sdk"] = m_sdkInstalled;
+
+        if (m_installations.size())
+            config["default-installation"] = m_defaultInstallation;
+
+        for (auto x : m_installations) {
+            nlohmann::json inst;
+            inst["path"] = x.m_path;
+            inst["executable"] = x.m_exe;
+            inst["version"] = x.m_version;
+            config["installations"].push_back(inst);
+        }
+
+        ofs << config.dump(4); 
+        ofs.close();
     #endif
 
     return Ok();
@@ -478,7 +551,7 @@ Result<> Manager::deleteData() {
         return Err("Unable to delete registry key");
     }
     #else
-    #warning "Implement Manager::deleteData"
+    ghc::filesystem::remove("/Users/Shared/Noahh/config.json");
     #endif
 
     return Ok();
@@ -524,7 +597,8 @@ Result<> Manager::addCLIToPath() {
     );
     return Ok();
     #else
-    #warning "Implement Manager::addCLIToPath"
+    return Ok();
+    // changing environment variables??? in *this* political landscape???
     #endif
 }
 
@@ -539,6 +613,14 @@ Result<> Manager::installSDK(
     if (!ghc::filesystem::exists(m_sdkDirectory / "bin" / "noahhutils.dll")) {
         return Err("Noahh CLI seems to not have been installed!");
     }
+
+    #else
+
+    if (!ghc::filesystem::exists(m_sdkDirectory / "bin" / "libnoahhutils.dylib")) {
+        return Err("Noahh CLI seems to not have been installed!");
+    }
+
+    #endif
 
     this->Bind(CALL_ON_MAIN, &Manager::onSyncThreadCall, this);
 
@@ -558,6 +640,8 @@ Result<> Manager::installSDK(
         using SuiteProgressCallback = void(__stdcall*)(const char*, int);
         using noahh_install_suite = const char*(__cdecl*)(const char*, bool, SuiteProgressCallback);
 
+        #if _WIN32
+
         auto lib = LoadLibraryW((m_sdkDirectory / "bin" / "noahhutils.dll").wstring().c_str());
         if (!lib) {
             throwError("Unable to load library");
@@ -569,6 +653,21 @@ Result<> Manager::installSDK(
             throwError("Unable to locate suite installing function");
             return;
         }
+
+        #else
+
+        auto lib = dlopen((m_sdkDirectory / "bin" / "noahhutils.dll").string().c_str(), RTLD_LAZY);
+        if (!lib) {
+            throwError("Unable to load library");
+        }
+
+        auto installSuite = reinterpret_cast<noahh_install_suite>(dlsym(lib, "noahh_install_suite"));
+        if (!installSuite) {
+            throwError("Unable to locate suite installing function");
+            return;
+        }
+
+        #endif
 
         if (
             !ghc::filesystem::exists(suiteDir) &&
@@ -615,10 +714,6 @@ Result<> Manager::installSDK(
     });
     t.detach();
     return Ok();
-
-    #else
-    #warning "Implement Manager::installSDK"
-    #endif
 }
 
 bool Manager::isSDKInstalled() const {
@@ -656,7 +751,7 @@ Result<> Manager::uninstallSDK() {
         nullptr
     );
     #else
-    #warning "Implement Manager::uninstallSDK"
+    // no environment variable lol
     #endif
     return Ok();
 }
@@ -669,7 +764,11 @@ Result<Installation> Manager::installLoaderFor(
 ) {
     Installation inst;
     inst.m_exe = gdExePath.filename().wstring();
+    #if _WIN32
     inst.m_path = gdExePath.parent_path();
+    #else
+    inst.m_path = gdExePath / "Contents";
+    #endif
     inst.m_version = version;
 
     #ifdef _WIN32
@@ -679,13 +778,26 @@ Result<Installation> Manager::installLoaderFor(
         return Err("Loader unzip error: " + ures.error());
     }
 
+    wxFile appid((inst.m_path / "steam_appid.txt").wstring(), wxFile::write);
+    appid.Write("322170");
+
     #elif defined(__APPLE__)
-    #warning "Do you just unzip the Noahh dylib to the GD folder on mac? or where do you put it"
+    auto zPath = inst.m_path / "Frameworks";
+    std::cout << "path " << zPath.string() << "\n";
+
+    auto ures = this->unzipTo(zipLocation, zPath);
+    if (!ures) {
+        return Err("Loader unzip error: " + ures.error());
+    }
+
     #else
     static_assert(false, "Implement installation proper for this platform");
     #endif
 
-    m_installations.insert(inst);
+    if (!m_installations.size()) {
+        m_defaultInstallation = 0;
+    }
+    this->addInstallation(inst);
 
     return Ok(inst);
 }
@@ -696,6 +808,7 @@ Result<> Manager::installAPIFor(
     wxString const& filename
 ) {
     auto targetDir = inst.m_path / "noahh" / "mods";
+
     if (
         !ghc::filesystem::exists(targetDir) &&
         !ghc::filesystem::create_directories(targetDir)
@@ -732,7 +845,8 @@ Result<> Manager::uninstallFrom(Installation const& inst) {
     return Ok();
 
     #elif defined(__APPLE__)
-    std::cout << "balls 2\n";
+    std::cout << "me when the...\n";
+    return Ok();
     #else
     #warning "Implement MainFrame::UninstallNoahh"
     #endif
@@ -752,9 +866,19 @@ Result<> Manager::deleteSaveDataFrom(Installation const& inst) {
     return Err("Save data directory not found!");
 
     #elif defined(__APPLE__)
-    std::cout << "cocks\n";
-    #else
-    #warning "Implement MainFrame::DeleteSaveData"
+
+    FSRef ref;
+    char path[PATH_MAX];
+    FSFindFolder( kUserDomain, kApplicationSupportFolderType, kCreateFolder, &ref );
+    FSRefMakePath( &ref, (UInt8*)&path, PATH_MAX );
+    ghc::filesystem::path appSupport(path);
+    appSupport = appSupport / "GeometryDash" / "noahh";
+
+    if (ghc::filesystem::exists(appSupport)) {
+        ghc::filesystem::remove_all(appSupport);
+        return Ok();
+    }
+    return Err("Save data directory not found!");
     #endif
 }
 
@@ -809,10 +933,6 @@ std::optional<ghc::filesystem::path> Manager::findDefaultGDPath() const {
     #elif defined(__APPLE__)
 
     return FigureOutGDPathMac();
-
-    #else
-    #warning "Implement Manager::FindDefaultGDPath!"
-    // If there's no automatic path figure-outing here, just return ""
     #endif
 }
 
@@ -847,11 +967,18 @@ int Manager::doesDirectoryContainOtherMods(
     #elif defined(__APPLE__)
 
     return flags; // there are no other conflicts
-
-    #else
-    #warning "Implement MainFrame::DetectOtherModLoaders!"
-    // Return a list of known mods if found (if possible, update
-    // the page to say "please uninstall other loaders first" if 
-    // this platform doesn't have any way of detecting existing ones)
     #endif
+}
+
+void Manager::launch(ghc::filesystem::path const& path) {
+    wxExecuteEnv env;
+    env.cwd = path.parent_path().wstring();
+    if (!wxExecute(path.wstring(), 0, nullptr, &env)) {
+        wxMessageBox(
+            "Unable to automatically restart GD, please "
+            "open the game yourself.",
+            "Error Starting GD",
+            wxICON_ERROR
+        );
+    }
 }
