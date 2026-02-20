@@ -16,33 +16,36 @@ REGISTER_PAGE(NotFound);
 class PageStart : public Page {
 protected:
     void onSelect(wxCommandEvent& e) override {
-        if (Manager::get()->isSuiteInstalled()) {
-            switch (e.GetId()) {
-                case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
-                case 1: m_frame->selectPageStructure(InstallType::Uninstall); break;
-                default: break;
-            }
-        } else {
-            switch (e.GetId()) {
-                case 0: m_frame->selectPageStructure(InstallType::InstallOnGDPS); break;
-                case 1: {
-                    if (Manager::get()->needRequestAdminPriviledges()) {
-                        wxMessageBox(
-                            "You need to run the installer as "
-                            "administrator in order to install "
-                            "the developer tools.",
-                            "Admin Priviledges Required",
-                            wxICON_ERROR
-                        );
-                        m_canContinue = false;
-                        m_frame->updateControls();
-                        return;
-                    }
-                    m_frame->selectPageStructure(InstallType::InstallDevTools);
-                } break;
-                case 2: m_frame->selectPageStructure(InstallType::Uninstall); break;
-                default: break;
-            }
+        switch (e.GetId()) {
+            case 0: {
+                m_frame->selectPageStructure(InstallType::InstallOnGDPS);
+            } break;
+
+            case 1: {
+                if (Manager::get()->needRequestAdminPriviledges()) {
+                    wxMessageBox(
+                        "You need to run the installer as "
+                        "administrator in order to install "
+                        "the developer tools.",
+                        "Admin Priviledges Required",
+                        wxICON_ERROR
+                    );
+                    m_canContinue = false;
+                    m_frame->updateControls();
+                    return;
+                }
+                m_frame->selectPageStructure(InstallType::InstallDevTools);
+            } break;
+
+            case 2: {
+                m_frame->selectPageStructure(InstallType::Manage);
+            } break;
+
+            case 3: {
+                m_frame->selectPageStructure(InstallType::Uninstall);
+            } break;
+
+            default: break;
         }
         m_canContinue = true;
         m_frame->updateControls();
@@ -72,7 +75,7 @@ protected:
             if (ix == Manager::get()->getDefaultInstallation()) {
                 info += "(Default) ";
             }
-            info += "Noahh loader " + inst.m_version + "\n";
+            info += "Noahh loader\n";
             info += inst.m_path.wstring() + "\n\n";
             ix++;
         }
@@ -83,15 +86,17 @@ public:
     PageStart(MainFrame* frame) : Page(frame) {
         this->addText("Welcome to the Noahh installer!");
         if (Manager::get()->isSuiteInstalled()) {
-            this->addSelect({
-                "Install Noahh on a GDPS (Private Server)",
-                "Uninstall Noahh"
+            this->addSelectWithIDs({
+                { "Install Noahh on a GDPS (Private Server)", 0 },
+                { "Manage Noahh installations", 2 },
+                { "Uninstall Noahh", 3 },
             });
         } else {
             this->addSelect({
                 "Install Noahh on a GDPS (Private Server)",
                 "Install the Noahh developer tools",
-                "Uninstall Noahh"
+                "Manage Noahh installations",
+                "Uninstall Noahh",
             });
         }
         this->addButton("Installations", &PageStart::onViewInfo);
