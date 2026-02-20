@@ -217,7 +217,7 @@ protected:
     void enter() override {
         for (auto& inst : Manager::get()->getInstallations()) {
             if (GET_EARLIER_PAGE(UninstallSelect)->shouldUninstall(inst)) {
-                auto ur = Manager::get()->uninstallFrom(inst);
+                auto ur = Manager::get()->uninstallNoahhFrom(inst);
                 if (!ur) {
                     wxMessageBox(
                         "Unable to uninstall Noahh from " + inst.m_path.string() + ": " +
