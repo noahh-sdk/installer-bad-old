@@ -426,6 +426,8 @@ Result<> Manager::loadData() {
             if (install.contains("version")) {
                 inst.m_version = std::string(install["version"]);
             }
+            this->addInstallation(inst);
+        }
 
         if (json.contains("default-installation")) {
             m_defaultInstallation = json["default-installation"];
